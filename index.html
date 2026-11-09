@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consulta de contatos por CPF</title>
+<style>
+  :root {
+    --bg: #f5f6f4; --surface: #ffffff; --text: #1d2420; --muted: #66706a;
+    --line: #dfe3df; --accent: #0f6b4f; --accent-text: #ffffff;
+    --ok: #0f6b4f; --warn: #a15c00; --err: #b3261e; --row: #f0f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141a17; --surface: #1c2420; --text: #e8ece9; --muted: #98a39c;
+      --line: #2c3731; --accent: #3fb68b; --accent-text: #08130e;
+      --ok: #3fb68b; --warn: #e0a444; --err: #f2867f; --row: #222c27;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  section {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 18px; margin-bottom: 16px;
+  }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=password], textarea {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  textarea { min-height: 150px; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  button, .filebtn {
+    font: inherit; padding: 9px 16px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .filebtn input { display: none; }
+  .hint { color: var(--muted); font-size: 13px; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+  .status { min-height: 22px; font-size: 14px; }
+  .status.err { color: var(--err); }
+  .bar { height: 6px; background: var(--row); border-radius: 4px; overflow: hidden; margin-top: 8px; display: none; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-bottom: 12px; }
+  .stats div { font-size: 13px; color: var(--muted); }
+  .stats b { display: block; font-size: 22px; color: var(--text); font-weight: 650; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; max-height: 480px; overflow-y: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--row); font-weight: 600; }
+  td.nf { color: var(--warn); }
+  .seg button { border-radius: 0; margin-left: -1px; padding: 6px 12px; font-size: 13px; }
+  .seg button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+  .seg button:last-child { border-radius: 0 7px 7px 0; }
+  .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .empty { padding: 26px; text-align: center; color: var(--muted); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Consulta de contatos por CPF</h1>
+  <p class="sub">Cole uma lista de CPFs ou carregue um arquivo e receba nome e telefone de cada cliente.</p>
+
+  <section>
+    <h2>CPFs para consultar</h2>
+    <textarea id="cpfs" placeholder="Um CPF por linha, com ou sem pontuação&#10;123.456.789-09&#10;98765432100"></textarea>
+    <div class="row">
+      <label class="filebtn">Carregar arquivo (.csv ou .txt)<input type="file" id="file" accept=".csv,.txt,text/csv,text/plain"></label>
+      <button class="primary" id="go">Consultar</button>
+      <button id="clear">Limpar</button>
+      <span class="hint" id="count"></span>
+    </div>
+    <div class="bar" id="bar"><div id="prog"></div></div>
+    <p class="status" id="status" role="status"></p>
+  </section>
+
+  <section id="out" class="hidden">
+    <h2>Resultado</h2>
+    <div class="stats">
+      <div><b id="sTotal">0</b>consultados</div>
+      <div><b id="sOk">0</b>encontrados</div>
+      <div><b id="sNo">0</b>não encontrados</div>
+    </div>
+    <div class="row" style="margin: 0 0 12px">
+      <div class="seg" role="group" aria-label="Filtro">
+        <button data-f="all" aria-pressed="true">Todos</button>
+        <button data-f="ok" aria-pressed="false">Encontrados</button>
+        <button data-f="no" aria-pressed="false">Não encontrados</button>
+      </div>
+      <button id="dl">Baixar CSV</button>
+      <button id="copy">Copiar tabela</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>CPF</th><th>Nome</th><th>Telefone</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var URL_WEBHOOK = 'https://rarelookingorca-n8n.cloudfy.live/webhook/consulta-cpf';
+  var LOTE = 2000;
+  var $ = function (id) { return document.getElementById(id); };
+  var resultados = [];
+  var filtro = 'all';
+
+  function limpa(v) { return String(v || '').replace(/\D/g, ''); }
+  function extrair(texto) {
+    var vistos = {}, lista = [];
+    texto.split(/\r?\n/).forEach(function (linha) {
+      var celula = linha.split(/[;,\t]/)[0];
+      var d = limpa(celula);
+      if (d.length >= 9 && d.length <= 11) {
+        d = ('00000000000' + d).slice(-11);
+        if (!vistos[d]) { vistos[d] = 1; lista.push(d); }
+      }
+    });
+    return lista;
+  }
+  function atualizaContagem() {
+    var n = extrair($('cpfs').value).length;
+    $('count').textContent = n ? n + ' CPF(s) válidos na lista' : '';
+  }
+  $('cpfs').oninput = atualizaContagem;
+
+  $('file').onchange = function (ev) {
+    var f = ev.target.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { $('cpfs').value = r.result; atualizaContagem(); };
+    r.readAsText(f);
+    ev.target.value = '';
+  };
+  $('clear').onclick = function () {
+    $('cpfs').value = ''; atualizaContagem(); status('');
+    $('out').classList.add('hidden'); resultados = [];
+  };
+
+  function status(msg, erro) {
+    var s = $('status'); s.textContent = msg; s.className = 'status' + (erro ? ' err' : '');
+  }
+
+  async function consultarLote(url, cpfs) {
+    var res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cpfs: cpfs })
+    });
+    if (res.status === 404) throw new Error('Webhook não encontrado. Confira a URL e se o workflow está ativo.');
+    if (!res.ok) throw new Error('O n8n respondeu com erro ' + res.status + '.');
+    var data = await res.json();
+    if (data.erro) throw new Error(data.erro);
+    return data.resultados || [];
+  }
+
+  $('go').onclick = async function () {
+    var url = URL_WEBHOOK;
+    var lista = extrair($('cpfs').value);
+    if (!lista.length) return status('Cole pelo menos um CPF válido.', true);
+
+    $('go').disabled = true; resultados = [];
+    $('bar').style.display = 'block'; $('prog').style.width = '0';
+    try {
+      for (var i = 0; i < lista.length; i += LOTE) {
+        status('Consultando ' + Math.min(i + LOTE, lista.length) + ' de ' + lista.length + '...');
+        var parte = await consultarLote(url, lista.slice(i, i + LOTE));
+        resultados = resultados.concat(parte);
+        $('prog').style.width = Math.round(Math.min(i + LOTE, lista.length) / lista.length * 100) + '%';
+      }
+      status('Concluído.');
+      mostrar();
+    } catch (e) {
+      var msg = e.message;
+      if (e instanceof TypeError) msg = 'Não foi possível conectar. Verifique se o workflow está ativo no n8n e se o CORS do nó Webhook está liberado.';
+      status(msg, true);
+      if (resultados.length) mostrar();
+    } finally {
+      $('go').disabled = false;
+      setTimeout(function () { $('bar').style.display = 'none'; }, 600);
+    }
+  };
+
+  function fmtCpf(c) { return c.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function mostrar() {
+    var ok = resultados.filter(function (r) { return r.encontrado; }).length;
+    $('sTotal').textContent = resultados.length;
+    $('sOk').textContent = ok;
+    $('sNo').textContent = resultados.length - ok;
+    $('out').classList.remove('hidden');
+    desenhar();
+  }
+  function visiveis() {
+    return resultados.filter(function (r) {
+      return filtro === 'all' || (filtro === 'ok' ? r.encontrado : !r.encontrado);
+    });
+  }
+  function desenhar() {
+    var v = visiveis();
+    if (!v.length) { $('tbody').innerHTML = '<tr><td colspan="3" class="empty">Nada para mostrar neste filtro.</td></tr>'; return; }
+    $('tbody').innerHTML = v.slice(0, 2000).map(function (r) {
+      return '<tr><td>' + fmtCpf(r.cpf) + '</td>' +
+        (r.encontrado
+          ? '<td>' + esc(r.nome) + '</td><td>' + esc(r.telefone) + '</td>'
+          : '<td class="nf" colspan="2">não encontrado</td>') + '</tr>';
+    }).join('') + (v.length > 2000 ? '<tr><td colspan="3" class="empty">Mostrando 2000 de ' + v.length + '. O CSV baixado traz todos.</td></tr>' : '');
+  }
+  document.querySelectorAll('.seg button').forEach(function (b) {
+    b.onclick = function () {
+      filtro = b.dataset.f;
+      document.querySelectorAll('.seg button').forEach(function (x) { x.setAttribute('aria-pressed', x === b); });
+      desenhar();
+    };
+  });
+
+  function celula(v) {
+    v = String(v == null ? '' : v);
+    return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  $('dl').onclick = function () {
+    var linhas = ['cpf;nome;telefone;encontrado'].concat(visiveis().map(function (r) {
+      return [r.cpf, r.nome, r.telefone, r.encontrado ? 'sim' : 'nao'].map(celula).join(';');
+    }));
+    var blob = new Blob(['\ufeff' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'contatos-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  };
+  $('copy').onclick = function () {
+    var txt = visiveis().map(function (r) { return [r.cpf, r.nome || '', r.telefone || ''].join('\t'); }).join('\n');
+    navigator.clipboard.writeText(txt).then(function () { status('Tabela copiada.'); },
+      function () { status('Não foi possível copiar. Use o botão Baixar CSV.', true); });
+  };
+
+})();
+</script>
+</body>
+</html>
